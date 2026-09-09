@@ -301,6 +301,66 @@
             margin-top: .25rem;
         }
 
+        /* ===== PASSWORD STRENGTH METER ===== */
+        .pw-strength {
+            margin-top: .5rem;
+        }
+
+        .pw-strength-bar {
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .pw-strength-fill {
+            display: block;
+            height: 100%;
+            width: 0;
+            border-radius: 3px;
+            transition: width .3s ease, background-color .3s ease;
+        }
+
+        .pw-strength-fill.level-1 { background: #dc3545; }
+        .pw-strength-fill.level-2 { background: #f97316; }
+        .pw-strength-fill.level-3 { background: #f59e0b; }
+        .pw-strength-fill.level-4 { background: #16a34a; }
+
+        .pw-strength-label {
+            font-size: .75rem;
+            font-weight: 600;
+            margin-top: .3rem;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color .3s ease;
+        }
+
+        .pw-strength-label.level-1 { color: #dc3545; }
+        .pw-strength-label.level-2 { color: #f97316; }
+        .pw-strength-label.level-3 { color: #b45309; }
+        .pw-strength-label.level-4 { color: #16a34a; }
+
+        /* ===== CONFIRM PASSWORD MATCH ===== */
+        .input-affix.has-success {
+            border-color: #16a34a;
+        }
+
+        .input-affix.has-success:focus-within {
+            box-shadow: 0 0 0 3px rgba(22,163,74,.12);
+        }
+
+        .match-status {
+            font-size: .78rem;
+            margin-top: .3rem;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .match-status.match-ok { color: #16a34a; }
+        .match-status.match-bad { color: #dc3545; }
+
         /* ===== BUTTON ===== */
         .btn-register {
             width: 100%;
@@ -503,16 +563,26 @@
                             @error('password')
                                 <div class="error-text"><i class="bi bi-exclamation-circle"></i> {{ $message }}</div>
                             @enderror
+                            <div class="pw-strength" id="pwStrength" hidden>
+                                <div class="pw-strength-bar">
+                                    <span class="pw-strength-fill" id="pwStrengthFill"></span>
+                                </div>
+                                <div class="pw-strength-label" id="pwStrengthLabel"></div>
+                            </div>
                             <div class="hint-text">Must be at least 8 characters</div>
                         </div>
 
                         <div class="form-group">
                             <label for="password_confirmation">CONFIRM PASSWORD</label>
-                            <div class="input-affix">
+                            <div class="input-affix" id="confirmAffix">
                                 <span class="affix-icon"><i class="bi bi-lock-fill"></i></span>
                                 <input id="password_confirmation" type="password" name="password_confirmation"
                                        required placeholder="Confirm your password">
+                                <button type="button" class="toggle-btn" onclick="toggleConfirmPass()" tabindex="-1">
+                                    <i class="bi bi-eye" id="confirmPassIcon"></i>
+                                </button>
                             </div>
+                            <div class="match-status" id="matchStatus" hidden></div>
                         </div>
 
                         <button type="submit" class="btn-register" id="submitBtn">
@@ -535,19 +605,114 @@
     </div>
 
     <script>
-        function togglePass() {
-            const pw = document.getElementById('password');
-            const icon = document.getElementById('passIcon');
-            if (pw.type === 'password') {
-                pw.type = 'text';
+        // ===== Password visibility toggles =====
+        function toggleFieldVisibility(inputId, iconId) {
+            const input = document.getElementById(inputId);
+            const icon = document.getElementById(iconId);
+            if (input.type === 'password') {
+                input.type = 'text';
                 icon.classList.replace('bi-eye', 'bi-eye-slash');
             } else {
-                pw.type = 'password';
+                input.type = 'password';
                 icon.classList.replace('bi-eye-slash', 'bi-eye');
             }
         }
 
+        function togglePass() {
+            toggleFieldVisibility('password', 'passIcon');
+        }
+
+        function toggleConfirmPass() {
+            toggleFieldVisibility('password_confirmation', 'confirmPassIcon');
+        }
+
+        // ===== Live password strength =====
+        const pwInput = document.getElementById('password');
+        const confirmInput = document.getElementById('password_confirmation');
+        const strengthBox = document.getElementById('pwStrength');
+        const strengthFill = document.getElementById('pwStrengthFill');
+        const strengthLabel = document.getElementById('pwStrengthLabel');
+        const matchStatus = document.getElementById('matchStatus');
+        const confirmAffix = document.getElementById('confirmAffix');
+
+        const STRENGTH_LEVELS = [
+            { min: 0, width: 25, cls: 'level-1', label: 'Very weak', icon: 'bi-emoji-frown' },
+            { min: 2, width: 50, cls: 'level-2', label: 'Weak', icon: 'bi-emoji-neutral' },
+            { min: 4, width: 75, cls: 'level-3', label: 'Medium', icon: 'bi-emoji-smile' },
+            { min: 5, width: 100, cls: 'level-4', label: 'Strong', icon: 'bi-shield-check' }
+        ];
+
+        function passwordScore(val) {
+            let score = 0;
+            if (val.length >= 8) score++;
+            if (val.length >= 12) score++;
+            if (/[a-z]/.test(val)) score++;
+            if (/[A-Z]/.test(val)) score++;
+            if (/[0-9]/.test(val)) score++;
+            if (/[^A-Za-z0-9]/.test(val)) score++;
+            return score;
+        }
+
+        function updateStrength() {
+            const val = pwInput.value;
+            if (!val) {
+                strengthBox.hidden = true;
+                strengthFill.style.width = '0';
+                strengthLabel.className = 'pw-strength-label';
+                strengthLabel.innerHTML = '';
+                return;
+            }
+            const score = passwordScore(val);
+            let level = STRENGTH_LEVELS[0];
+            for (const l of STRENGTH_LEVELS) {
+                if (score >= l.min) level = l;
+            }
+            strengthBox.hidden = false;
+            strengthFill.style.width = level.width + '%';
+            strengthFill.className = 'pw-strength-fill ' + level.cls;
+            strengthLabel.className = 'pw-strength-label ' + level.cls;
+            strengthLabel.innerHTML = '<i class="bi ' + level.icon + '"></i> ' + level.label;
+        }
+
+        // ===== Live confirm-password match =====
+        function updateMatch() {
+            const pwVal = pwInput.value;
+            const confirmVal = confirmInput.value;
+
+            if (!confirmVal) {
+                matchStatus.hidden = true;
+                confirmAffix.classList.remove('has-error', 'has-success');
+                return;
+            }
+
+            matchStatus.hidden = false;
+            if (pwVal && confirmVal === pwVal) {
+                matchStatus.className = 'match-status match-ok';
+                matchStatus.innerHTML = '<i class="bi bi-check-circle"></i> Passwords match';
+                confirmAffix.classList.remove('has-error');
+                confirmAffix.classList.add('has-success');
+            } else {
+                matchStatus.className = 'match-status match-bad';
+                matchStatus.innerHTML = '<i class="bi bi-x-circle"></i> Passwords do not match';
+                confirmAffix.classList.remove('has-success');
+                confirmAffix.classList.add('has-error');
+            }
+        }
+
+        pwInput.addEventListener('input', function() {
+            updateStrength();
+            updateMatch();
+        });
+        confirmInput.addEventListener('input', updateMatch);
+
+        // ===== Submit guard + loading state =====
         document.getElementById('registerForm').addEventListener('submit', function(e) {
+            if (confirmInput.value !== pwInput.value) {
+                e.preventDefault();
+                updateMatch();
+                confirmInput.focus();
+                return;
+            }
             const btn = document.getElementById('submitBtn');
             btn.classList.add('loading');
             btn.disabled = true;
